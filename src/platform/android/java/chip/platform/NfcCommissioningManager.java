@@ -16,6 +16,7 @@
  *
  */
 package chip.platform;
+import android.nfc.Tag;
 
 public interface NfcCommissioningManager {
 
@@ -49,6 +50,13 @@ public interface NfcCommissioningManager {
    * @return None
    */
   void shutdown();
+
+  /**
+   * @brief Function to set the NFC Tag.
+   * @param androidTag : NFC Tag (as defined in android.nfc.Tag)
+   * @return None
+   */
+  void setNFCTag(Tag androidTag);
 
   /**
    * @brief Function to send data to an NFC Tag. See NfcApplicationDelegate.
