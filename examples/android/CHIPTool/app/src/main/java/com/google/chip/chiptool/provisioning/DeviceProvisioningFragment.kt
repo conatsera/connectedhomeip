@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 class DeviceProvisioningFragment : Fragment() {
 
   private lateinit var deviceInfo: CHIPDeviceInfo
+  private var attemptNfc: Boolean = false
 
   private var gatt: BluetoothGatt? = null
 
@@ -77,6 +78,7 @@ class DeviceProvisioningFragment : Fragment() {
   ): View {
     scope = viewLifecycleOwner.lifecycleScope
     deviceInfo = checkNotNull(requireArguments().getParcelable(ARG_DEVICE_INFO))
+    attemptNfc = checkNotNull(requireArguments().getBoolean(ARG_ATTEMPT_NFC))
 
     return inflater.inflate(R.layout.barcode_fragment, container, false).apply {
       if (savedInstanceState == null) {
@@ -196,31 +198,10 @@ class DeviceProvisioningFragment : Fragment() {
       return
     }
     scope.launch {
-      val bluetoothManager = BluetoothManager()
-
-      showMessage(R.string.rendezvous_over_ble_scanning_text, deviceInfo.discriminator.toString())
-      val device =
-        bluetoothManager.getBluetoothDevice(
-          requireContext(),
-          deviceInfo.discriminator,
-          deviceInfo.isShortDiscriminator
-        )
-          ?: run {
-            showMessage(R.string.rendezvous_over_ble_scanning_failed_text)
-            return@launch
-          }
-
-      showMessage(
-        R.string.rendezvous_over_ble_connecting_text,
-        device.name ?: device.address.toString()
-      )
-      gatt = bluetoothManager.connect(requireContext(), device)
-
       showMessage(R.string.rendezvous_over_ble_pairing_text)
       deviceController.setCompletionListener(ConnectionCallback())
 
       val deviceId = DeviceIdUtil.getNextAvailableId(requireContext())
-      val connId = bluetoothManager.connectionId
       var network: NetworkCredentials? = null
       var networkParcelable = checkNotNull(networkCredentialsParcelable)
 
@@ -254,7 +235,32 @@ class DeviceProvisioningFragment : Fragment() {
           .setICDRegistrationInfo(icdRegistrationInfo)
           .build()
 
-      deviceController.pairDeviceThroughBLE(gatt, connId, deviceId, deviceInfo.setupPinCode, params)
+      if (attemptNfc) {
+          deviceController.pairDeviceThroughNfc(deviceId, deviceInfo.setupPinCode, params)
+      } else {
+          showMessage(R.string.rendezvous_over_ble_scanning_text, deviceInfo.discriminator.toString())
+          val bluetoothManager = BluetoothManager()
+          val device =
+              bluetoothManager.getBluetoothDevice(
+                  requireContext(),
+                  deviceInfo.discriminator,
+                  deviceInfo.isShortDiscriminator
+              )
+                  ?: run {
+                      showMessage(R.string.rendezvous_over_ble_scanning_failed_text)
+                      return@launch
+                  }
+
+          val connId = bluetoothManager.connectionId
+          showMessage(
+              R.string.rendezvous_over_ble_connecting_text,
+              device.name ?: device.address.toString()
+          )
+          gatt = bluetoothManager.connect(requireContext(), device)
+
+          deviceController.pairDeviceThroughBLE(gatt, connId, deviceId, deviceInfo.setupPinCode, params)
+      }
+
       DeviceIdUtil.setNextAvailableId(requireContext(), deviceId + 1)
     }
   }
@@ -291,7 +297,11 @@ class DeviceProvisioningFragment : Fragment() {
     override fun onPairingComplete(code: Long) {
       Log.d(TAG, "onPairingComplete: $code")
 
-      if (code != STATUS_PAIRING_SUCCESS) {
+      if (code == STATUS_TIMEOUT) {
+          showMessage(R.string.rendezvous_over_nfc_pairing_timeout_text)
+          attemptNfc = false
+          startConnectingToDevice()
+      } else if (code != STATUS_PAIRING_SUCCESS) {
         showMessage(R.string.rendezvous_over_ble_pairing_failure_text)
         FragmentUtil.getHost(this@DeviceProvisioningFragment, Callback::class.java)
           ?.onCommissioningComplete(code)
@@ -357,7 +367,9 @@ class DeviceProvisioningFragment : Fragment() {
     private const val TAG = "DeviceProvisioningFragment"
     private const val ARG_DEVICE_INFO = "device_info"
     private const val ARG_NETWORK_CREDENTIALS = "network_credentials"
+    private const val ARG_ATTEMPT_NFC = "nfc"
     private const val STATUS_PAIRING_SUCCESS = 0L
+    private const val STATUS_TIMEOUT = 50L
 
     /**
      * Set for the fail-safe timer before onDeviceAttestationFailed is invoked.
@@ -373,12 +385,14 @@ class DeviceProvisioningFragment : Fragment() {
     fun newInstance(
       deviceInfo: CHIPDeviceInfo,
       networkCredentialsParcelable: NetworkCredentialsParcelable?,
+      attemptNfc: Boolean
     ): DeviceProvisioningFragment {
       return DeviceProvisioningFragment().apply {
         arguments =
-          Bundle(2).apply {
+          Bundle(3).apply {
             putParcelable(ARG_DEVICE_INFO, deviceInfo)
             putParcelable(ARG_NETWORK_CREDENTIALS, networkCredentialsParcelable)
+            putBoolean(ARG_ATTEMPT_NFC, attemptNfc)
           }
       }
     }

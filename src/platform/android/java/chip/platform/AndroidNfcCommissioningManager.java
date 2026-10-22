@@ -126,11 +126,7 @@ public class AndroidNfcCommissioningManager implements NfcCommissioningManager {
     workerHandler.sendMessage(message);
   }
 
-  /**
-   * @brief Function to set the NFC Tag.
-   * @param androidTag : NFC Tag (as defined in android.nfc.Tag)
-   * @return None
-   */
+  @Override
   public void setNFCTag(Tag androidTag) {
     mIsoDep = IsoDep.get(androidTag);
     if (mIsoDep == null) {

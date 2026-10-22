@@ -21,6 +21,7 @@ import android.content.Intent
 import android.net.Uri
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
+import android.nfc.Tag
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
@@ -88,7 +89,7 @@ class CHIPToolActivity :
       showFragment(CHIPDeviceDetailsFragment.newInstance(deviceInfo))
     } else {
       if (deviceInfo.ipAddress != null) {
-        showFragment(DeviceProvisioningFragment.newInstance(deviceInfo!!, null))
+        showFragment(DeviceProvisioningFragment.newInstance(deviceInfo!!, null, intent?.action == NfcAdapter.ACTION_NDEF_DISCOVERED))
       } else {
         showFragment(EnterNetworkFragment.newInstance(networkType!!), false)
       }
@@ -110,7 +111,7 @@ class CHIPToolActivity :
   }
 
   override fun onNetworkCredentialsEntered(networkCredentials: NetworkCredentialsParcelable) {
-    showFragment(DeviceProvisioningFragment.newInstance(deviceInfo!!, networkCredentials))
+    showFragment(DeviceProvisioningFragment.newInstance(deviceInfo!!, networkCredentials, intent?.action == NfcAdapter.ACTION_NDEF_DISCOVERED))
   }
 
   override fun handleReadFromLedgerClicked(deviceInfo: CHIPDeviceInfo) {
@@ -159,6 +160,9 @@ class CHIPToolActivity :
       Toast.makeText(this, "Unrecognized QR Code", Toast.LENGTH_SHORT).show()
       return
     }
+
+    val tag = intent?.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
+    ChipClient.getAndroidChipPlatform(this).nfcCommissioningManager.setNFCTag(tag);
 
     val deviceInfo = CHIPDeviceInfo.fromSetupPayload(setupPayload)
 
